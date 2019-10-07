@@ -145,7 +145,7 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForReadOnlyCit
 		}
 		if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(caSecret.Data[caCertID],
 			caSecret.Data[caPrivateKeyID], nil, rootCerts); err != nil {
-			rootCertRotatorLog.Errorf("Failed to create CA KeyCertBundle (%v)", err)
+			rootCertRotatorLog.Errorf("Failed to update CA KeyCertBundle (%v)", err)
 			return
 		}
 		rootCertRotatorLog.Infof("Updated CA KeyCertBundle using existing public key: %v", string(rootCerts))
@@ -171,12 +171,24 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCert
 	// Check root certificate expiration time in CA secret
 	waitTime, err := rotator.config.certInspector.GetWaitTime(caSecret.Data[caCertID], time.Now(), time.Duration(0))
 	if err == nil && waitTime > 0 {
-		rootCertRotatorLog.Info("Root cert is not about to expire, skipping root cert rotation.")
+		rootCertRotatorLog.Info("Root cert is not about to expire, skip root cert rotation.")
+		if certutil.CompareCertLifeTime(rotator.ca.GetCAKeyCertBundle().GetRootCertPem(), caSecret.Data[caCertID]) {
+			rootCertRotatorLog.Info("Root cert in KeyCertBundle is older than root cert in istio-ca-secret, " +
+				"update KeyCertBundle.")
+			rootCerts, err := appendRootCerts(caSecret.Data[caCertID], rotator.config.rootCertFile)
+			if err != nil {
+				rootCertRotatorLog.Errorf("Failed to append root certificates, skip updating KeyCertBundle" +
+					" (%v)", err)
+				return
+			}
+			if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(caSecret.Data[caCertID],
+				caSecret.Data[caPrivateKeyID], nil, rootCerts); err != nil {
+				rootCertRotatorLog.Errorf("Failed to update CA KeyCertBundle (%v)", err)
+				return
+			}
+		}
 		return
 	}
-	// TODO(JimmyCYJ): If root cert in the secret is newer than the root cert in
-	// key cert bundle, we need to update key cert bundle.
-
 	rootCertRotatorLog.Info("Refresh root certificate")
 	options := util.CertOptions{
 		TTL:           rotator.config.caCertTTL,

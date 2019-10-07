@@ -476,15 +476,20 @@ func (sc *SecretController) scrtUpdated(oldObj, newObj interface{}) {
 
 	_, waitErr := sc.certUtil.GetWaitTime(scrt.Data[CertChainID], time.Now(), sc.minGracePeriod)
 
-	rootCertificate := sc.ca.GetCAKeyCertBundle().GetRootCertPem()
-
+	_, caKey, _, rootCertificate := sc.ca.GetCAKeyCertBundle().GetAllPem()
+	if certutil.CompareCertLifeTime(rootCertificate, scrt.Data[RootCertID]) {
+		k8sControllerLog.Infof("Root cert in KeyCertBundle is older than root cert in %s:%s, " +
+			"update KeyCertBundle.", scrt.Namespace, scrt.Name)
+		if err := sc.ca.GetCAKeyCertBundle().VerifyAndSetAll(scrt.Data[RootCertID],
+			caKey, nil, scrt.Data[RootCertID]); err != nil {
+			k8sControllerLog.Errorf("Failed to update CA KeyCertBundle (%v)", err)
+		}
+		return
+	}
 	// Refresh the secret if 1) the certificate contained in the secret is about
 	// to expire, or 2) the root certificate in the secret is different than the
 	// one held by the ca (this may happen when the CA is restarted and
 	// a new self-signed CA cert is generated).
-	// TODO(JimmyCYJ): Compare the root cert expiration time instead of raw bytes.
-	// When multiple Citadels are deployed, it is possible that root cert in local
-	// key cert bundle is older than the root cert in workload secret.
 	if waitErr != nil || !bytes.Equal(rootCertificate, scrt.Data[RootCertID]) {
 		// if the namespace is not managed, don't refresh the expired secret, delete it
 		secretNamespace, err := sc.core.Namespaces().Get(namespace, metav1.GetOptions{})

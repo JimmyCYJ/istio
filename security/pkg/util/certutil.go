@@ -16,10 +16,13 @@ package util
 
 import (
 	"fmt"
+	"istio.io/pkg/log"
 	"time"
 
 	"istio.io/istio/security/pkg/pki/util"
 )
+
+var certUtilLog = log.RegisterScope("certUtil", "Certificate utility log", 0)
 
 // CertUtil is an interface for utility functions on certificate.
 type CertUtil interface {
@@ -65,3 +68,18 @@ func (cu CertUtilImpl) GetWaitTime(certBytes []byte, now time.Time, minGracePeri
 	}
 	return waitTime, nil
 }
+
+// CompareCertLifeTime compares cert life time between pemCertA and pemCertB, and returns true if
+// pemCertB is newer than pemCertA
+func CompareCertLifeTime(pemCertA, pemCertB []byte) bool {
+	certA, err := util.ParsePemEncodedCertificate(pemCertA)
+	if err != nil {
+		return false
+	}
+	certB, err := util.ParsePemEncodedCertificate(pemCertB)
+	if err != nil {
+		return false
+	}
+	return certB.NotBefore.After(certA.NotBefore)
+}
+
