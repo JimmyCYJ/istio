@@ -17,6 +17,7 @@ package ca
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -144,6 +145,7 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCert
 			}
 			rootCertRotatorLog.Info("Successfully reloaded root cert into KeyCertBundle.")
 			certEncoded := base64.StdEncoding.EncodeToString(rotator.ca.GetCAKeyCertBundle().GetRootCertPem())
+			// Sync root certificate in configmap with root certificate in istio-ca-secret.
 			if err = rotator.configMapController.InsertCATLSRootCertWithRetry(
 				certEncoded, rotator.config.retryInterval, 30*time.Second); err != nil {
 				rootCertRotatorLog.Errorf("Failed to write self-signed Citadel's root cert "+
@@ -189,22 +191,31 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCert
 	rootCertRotatorLog.Infof("Updated CA KeyCertBundle using existing public key: %v", string(pemCert))
 
 	certEncoded := base64.StdEncoding.EncodeToString(rotator.ca.GetCAKeyCertBundle().GetRootCertPem())
+	// Update root certificate in configmap, for Citadel agent to pick up and connect to Citadel.
+	// If update fails, rollback root certificate in keycertbundle and istio-ca-secret.
 	if err = rotator.configMapController.InsertCATLSRootCertWithRetry(
 		certEncoded, rotator.config.retryInterval, 30*time.Second); err != nil {
 		rootCertRotatorLog.Errorf("Failed to write self-signed Citadel's root cert "+
-			"to configmap (%s). Rollback root cert.", err.Error())
+			"to configmap (%s). Rollback root certificate.", err.Error())
 		caSecret.Data[caCertID] = oldCaCert
 		caSecret.Data[caPrivateKeyID] = oldCaPrivateKey
-		if err = rotator.caSecretController.UpdateCASecretWithRetry(caSecret, rotator.config.retryInterval, 30*time.Second); err != nil {
-			rootCertRotatorLog.Errorf("Failed to rollback CA secret (error: %s).", err.Error())
-			return
+		if err = rotator.rollbackRootCertificate(caSecret); err != nil {
+			rootCertRotatorLog.Errorf("Root certificate rollback fails (error: %s).", err.Error())
+		} else {
+			rootCertRotatorLog.Info("Root cert rollback is completed successfully.")
 		}
-		if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(oldCaCert, oldCaPrivateKey, nil, oldCaCert); err != nil {
-			rootCertRotatorLog.Errorf("Failed to rollback CA KeyCertBundle (%s)", err.Error())
-			return
-		}
-		rootCertRotatorLog.Info("Root cert rollback is completed successfully.")
 		return
 	}
 	rootCertRotatorLog.Info("Updated root cert in configmap")
+}
+
+func (rotator *SelfSignedCARootCertRotator) rollbackRootCertificate(caSecret *v1.Secret) error {
+	if err := rotator.caSecretController.UpdateCASecretWithRetry(caSecret, rotator.config.retryInterval, 30*time.Second); err != nil {
+		return fmt.Errorf("failed to rollback CA secret (error: %s)", err.Error())
+	}
+	if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(caSecret.Data[caCertID], caSecret.Data[caPrivateKeyID], nil,
+		caSecret.Data[caCertID]); err != nil {
+		return fmt.Errorf("failed to rollback CA KeyCertBundle (%s)", err.Error())
+	}
+	return nil
 }
