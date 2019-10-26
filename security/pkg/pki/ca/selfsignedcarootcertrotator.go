@@ -122,7 +122,7 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCert() {
 func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCertCitadel(
 	caSecret *v1.Secret) {
 	if caSecret == nil {
-		rootCertRotatorLog.Errorf("root cert secret %s is nil, skip cert rotation job",
+		log.Errorf("root cert secret %s is nil, skip cert rotation job",
 			CASecret)
 		return
 	}
@@ -138,7 +138,7 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCert
 	}
 	pemCert, pemKey, ckErr := util.GenRootCertFromExistingKey(options)
 	if ckErr != nil {
-		rootCertRotatorLog.Errorf("unable to generate CA cert and key for self-signed CA: %s", ckErr.Error())
+		log.Errorf("unable to generate CA cert and key for self-signed CA: %s", ckErr.Error())
 		return
 	}
 
@@ -146,47 +146,47 @@ func (rotator *SelfSignedCARootCertRotator) checkAndRotateRootCertForSigningCert
 	oldCaCert := caSecret.Data[caCertID]
 	oldCaPrivateKey := caSecret.Data[caPrivateKeyID]
 	for i := 0; i < 10; i++ {
-		rootCertRotatorLog.Info("roll forward to new root certificate in istio-ca-secret, keycertbundle and configmap")
+		log.Info("roll forward to new root certificate in istio-ca-secret, keycertbundle and configmap")
 		caSecret.Data[caCertID] = pemCert
 		caSecret.Data[caPrivateKeyID] = pemKey
 		if err := rotator.caSecretController.UpdateCASecretWithRetry(caSecret, rotator.config.retryInterval, 1*time.Second); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll forward root cert in CA secret (error: %s).", err.Error())
+			log.Errorf("Failed to roll forward root cert in CA secret (error: %s).", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled forward root cert in CA secret")
+		log.Info("Rolled forward root cert in CA secret")
 		if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(pemCert, pemKey, nil, pemCert); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll forward root cert in CA KeyCertBundle (%s)", err.Error())
+			log.Errorf("Failed to roll forward root cert in CA KeyCertBundle (%s)", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled forward root cert in CA keycertbundle")
+		log.Info("Rolled forward root cert in CA keycertbundle")
 		certEncoded := base64.StdEncoding.EncodeToString(rotator.ca.GetCAKeyCertBundle().GetRootCertPem())
 		if err := rotator.configMapController.InsertCATLSRootCertWithRetry(
 			certEncoded, rotator.config.retryInterval, 1*time.Second); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll forward root cert to configmap (%s).", err.Error())
+			log.Errorf("Failed to roll forward root cert to configmap (%s).", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled forward root cert in configmap")
+		log.Info("Rolled forward root cert in configmap")
 		time.Sleep(5 * time.Second)
 
 		caSecret, err := rotator.caSecretController.LoadCASecretWithRetry(CASecret,
 			rotator.config.caStorageNamespace, rotator.config.retryInterval, 1*time.Second)
 		if err != nil {
-			rootCertRotatorLog.Errorf("failed to get secret, skip rollback. %s", err.Error())
+			log.Errorf("failed to get secret, skip rollback. %s", err.Error())
 			return
 		}
-		rootCertRotatorLog.Info("roll backward to old root certificate in istio-ca-secret, keycertbundle and configmap")
+		log.Info("roll backward to old root certificate in istio-ca-secret, keycertbundle and configmap")
 		caSecret.Data[caCertID] = oldCaCert
 		caSecret.Data[caPrivateKeyID] = oldCaPrivateKey
 		if err := rotator.caSecretController.UpdateCASecretWithRetry(caSecret, rotator.config.retryInterval, 1*time.Second); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll backward root cert in CA secret (error: %s).", err.Error())
+			log.Errorf("Failed to roll backward root cert in CA secret (error: %s).", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled backward root cert in CA secret")
+		log.Info("Rolled backward root cert in CA secret")
 		if err := rotator.ca.GetCAKeyCertBundle().VerifyAndSetAll(oldCaCert, oldCaPrivateKey, nil, oldCaCert); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll backward root cert in CA KeyCertBundle (%s)", err.Error())
+			log.Errorf("Failed to roll backward root cert in CA KeyCertBundle (%s)", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled backward root cert in CA keycertbundle")
+		log.Info("Rolled backward root cert in CA keycertbundle")
 		certEncoded = base64.StdEncoding.EncodeToString(rotator.ca.GetCAKeyCertBundle().GetRootCertPem())
 		if err := rotator.configMapController.InsertCATLSRootCertWithRetry(
 			certEncoded, rotator.config.retryInterval, 1*time.Second); err != nil {
-			rootCertRotatorLog.Errorf("Failed to roll backward root cert to configmap (%s).", err.Error())
+			log.Errorf("Failed to roll backward root cert to configmap (%s).", err.Error())
 		}
-		rootCertRotatorLog.Info("Rolled backward root cert in configmap")
+		log.Info("Rolled backward root cert in configmap")
 	}
 }
