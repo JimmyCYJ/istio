@@ -152,12 +152,12 @@ func (rotator *SelfSignedCARootCertRotator) test() {
 		log.Info("Rolled forward root cert in configmap")
 		time.Sleep(2 * time.Second)
 
-		//caSecret, err := rotator.caSecretController.LoadCASecretWithRetry(CASecret,
-		//	rotator.config.caStorageNamespace, 100 * time.Millisecond, 1*time.Second)
-		//if err != nil {
-		//	log.Errorf("failed to get secret, skip rollback. %s", err.Error())
-		//	return
-		//}
+		caSecret, err := rotator.caSecretController.LoadCASecretWithRetry(CASecret,
+			rotator.config.caStorageNamespace, 100 * time.Millisecond, 1*time.Second)
+		if err != nil {
+			log.Errorf("failed to get secret, skip rollback. %s", err.Error())
+			return
+		}
 		log.Info("roll backward to old root certificate in istio-ca-secret, keycertbundle and configmap")
 		caSecret.Data[caCertID] = oldCaCert
 		caSecret.Data[caPrivateKeyID] = oldCaPrivateKey
