@@ -72,27 +72,21 @@ func (csc *CaSecretController) LoadCASecretWithRetry(secretName, namespace strin
 // UpdateCASecretWithRetry updates CA secret with retries until timeout.
 func (csc *CaSecretController) UpdateCASecretWithRetry(caSecret *v1.Secret,
 	retryInterval, timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	start := time.Now()
 
-	_, scrtErr := csc.client.Secrets(caSecret.Namespace).Update(caSecret)
-	if scrtErr != nil {
-		caSecretControllerLog.Errorf("Failed to update CA secret: %s. Wait until "+
-			"secret %s:%s can be updated", scrtErr.Error(), caSecret.Namespace, caSecret.Name)
-		ticker := time.NewTicker(retryInterval)
-		defer ticker.Stop()
-		for scrtErr != nil {
-			select {
-			case <-ticker.C:
-				if caSecret, scrtErr = csc.client.Secrets(caSecret.Namespace).Update(caSecret); scrtErr == nil {
-					break
-				}
-			case <-ctx.Done():
-				caSecretControllerLog.Errorf("Timeout on updating CA secret %s:%s.",
-					caSecret.Namespace, caSecret.Name)
-				break
-			}
+	for {
+		_, scrtErr := csc.client.Secrets(caSecret.Namespace).Update(caSecret)
+		if scrtErr != nil {
+			caSecretControllerLog.Errorf("Failed to update CA secret: %s. Wait until "+
+				"secret %s:%s can be updated", scrtErr.Error(), caSecret.Namespace, caSecret.Name)
+		} else {
+			return nil
 		}
+		if time.Since(start) > timeout {
+			caSecretControllerLog.Errorf("Timeout on updating CA secret %s:%s.",
+				caSecret.Namespace, caSecret.Name)
+			return scrtErr
+		}
+		time.Sleep(retryInterval)
 	}
-	return scrtErr
 }
