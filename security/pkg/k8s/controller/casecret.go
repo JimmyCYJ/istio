@@ -53,6 +53,7 @@ func (csc *CaSecretController) LoadCASecretWithRetry(secretName, namespace strin
 		caSecretControllerLog.Errorf("Failed to read secret that holds CA certificate: %s. "+
 			"Wait until secret %s:%s can be loaded", scrtErr.Error(), namespace, secretName)
 		ticker := time.NewTicker(retryInterval)
+		defer ticker.Stop()
 		for scrtErr != nil {
 			select {
 			case <-ticker.C:
@@ -61,7 +62,6 @@ func (csc *CaSecretController) LoadCASecretWithRetry(secretName, namespace strin
 				}
 			case <-ctx.Done():
 				caSecretControllerLog.Errorf("Timeout on loading CA secret %s:%s.", namespace, secretName)
-				ticker.Stop()
 				break
 			}
 		}
@@ -80,6 +80,7 @@ func (csc *CaSecretController) UpdateCASecretWithRetry(caSecret *v1.Secret,
 		caSecretControllerLog.Errorf("Failed to update CA secret: %s. Wait until "+
 			"secret %s:%s can be updated", scrtErr.Error(), caSecret.Namespace, caSecret.Name)
 		ticker := time.NewTicker(retryInterval)
+		defer ticker.Stop()
 		for scrtErr != nil {
 			select {
 			case <-ticker.C:
@@ -89,7 +90,6 @@ func (csc *CaSecretController) UpdateCASecretWithRetry(caSecret *v1.Secret,
 			case <-ctx.Done():
 				caSecretControllerLog.Errorf("Timeout on updating CA secret %s:%s.",
 					caSecret.Namespace, caSecret.Name)
-				ticker.Stop()
 				break
 			}
 		}
