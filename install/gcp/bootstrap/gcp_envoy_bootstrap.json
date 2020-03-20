@@ -37,9 +37,24 @@
               }
             },
             "call_credentials": {
-              "google_compute_engine": {}
+            {{ if .sts }}
+            "sts_service": {
+              "token_exchange_service_uri": "http://localhost:{{ .sts_port }}/token",
+              "subject_token_path": "/var/run/secrets/tokens/istio-token",
+              "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+              "scope": "https://www.googleapis.com/auth/cloud-platform",
             }
-          }
+            {{ else }}
+              "google_compute_engine": {}
+            {{ end }}
+            }
+          },
+          "initial_metadata": [
+            {
+              "key": "x-goog-user-project",
+              "value": {{ .gcp_project_id }}
+            }
+          ]
         }
       ]
     }
@@ -71,7 +86,13 @@
               "google_compute_engine": {}
             {{ end }}
             }
-          }
+          },
+          "initial_metadata": [
+            {
+              "key": "x-goog-user-project",
+              "value": {{ .gcp_project_id }}
+            }
+          ]
         }
       ]
     }

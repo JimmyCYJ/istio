@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	sts "istio.io/istio/security/pkg/stsservice/tokenmanager"
+
 	md "cloud.google.com/go/compute/metadata"
 
 	"istio.io/istio/pkg/config/constants"
@@ -127,8 +129,11 @@ func (cfg Config) toTemplateParams() (map[string]interface{}, error) {
 		option.ProvCert(cfg.ProvCert))
 
 	if cfg.STSPort > 0 {
-		opts = append(opts, option.STSEnabled(true),
-			option.STSPort(cfg.STSPort))
+		gcpProjectID := sts.GetGCPProjectInfo().ID
+		opts = append(opts,
+			option.STSEnabled(true),
+			option.STSPort(cfg.STSPort),
+			option.GCPProjectID(gcpProjectID))
 	}
 
 	// Support passing extra info from node environment as metadata

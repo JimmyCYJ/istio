@@ -240,6 +240,10 @@ func STSPort(value int) Instance {
 	return newOption("sts_port", value)
 }
 
+func GCPProjectID(value string) Instance {
+	return newOption("gcp_project_id", value)
+}
+
 func STSEnabled(value bool) Instance {
 	return newOption("sts", value)
 }

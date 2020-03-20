@@ -17,6 +17,7 @@ package tokenmanager
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"istio.io/istio/pkg/bootstrap/platform"
 	"istio.io/istio/security/pkg/stsservice"
@@ -45,30 +46,40 @@ type Config struct {
 // GCPProjectInfo stores GCP project information, including project number,
 // project ID, cluster location, cluster name
 type GCPProjectInfo struct {
-	Number          string
-	id              string
+	number          string
+	ID              string
 	cluster         string
 	clusterLocation string
 }
 
-func getGCPProjectInfo() GCPProjectInfo {
-	info := GCPProjectInfo{}
-	if platform.IsGCP() {
-		md := platform.NewGCP().Metadata()
-		if projectNum, found := md[platform.GCPProjectNumber]; found {
-			info.Number = projectNum
+var (
+	// Singleton object of GCP project information
+	gcpInfo *GCPProjectInfo
+	once    sync.Once
+)
+
+// GetGCPProjectInfo fetches GCP information from GCP metadata server and returns the information.
+// This method is thread safe.
+func GetGCPProjectInfo() *GCPProjectInfo {
+	once.Do(func() {
+		gcpInfo = &GCPProjectInfo{}
+		if platform.IsGCP() {
+			md := platform.NewGCP().Metadata()
+			if projectNum, found := md[platform.GCPProjectNumber]; found {
+				gcpInfo.number = projectNum
+			}
+			if projectID, found := md[platform.GCPProject]; found {
+				gcpInfo.ID = projectID
+			}
+			if clusterName, found := md[platform.GCPCluster]; found {
+				gcpInfo.cluster = clusterName
+			}
+			if clusterLocation, found := md[platform.GCPLocation]; found {
+				gcpInfo.clusterLocation = clusterLocation
+			}
 		}
-		if projectID, found := md[platform.GCPProject]; found {
-			info.id = projectID
-		}
-		if clusterName, found := md[platform.GCPCluster]; found {
-			info.cluster = clusterName
-		}
-		if clusterLocation, found := md[platform.GCPLocation]; found {
-			info.clusterLocation = clusterLocation
-		}
-	}
-	return info
+	})
+	return gcpInfo
 }
 
 // CreateTokenManager creates a token manager with specified type and returns
@@ -79,10 +90,10 @@ func CreateTokenManager(tokenManagerType string, config Config) stsservice.Token
 	}
 	switch tokenManagerType {
 	case GoogleTokenExchange:
-		if projectInfo := getGCPProjectInfo(); len(projectInfo.Number) > 0 {
+		if projectInfo := GetGCPProjectInfo(); len(projectInfo.number) > 0 {
 			gkeClusterURL := fmt.Sprintf("https://container.googleapis.com/v1/projects/%s/locations/%s/clusters/%s",
-				projectInfo.id, projectInfo.clusterLocation, projectInfo.cluster)
-			if p, err := google.CreateTokenManagerPlugin(config.TrustDomain, projectInfo.Number, gkeClusterURL, true); err == nil {
+				projectInfo.ID, projectInfo.clusterLocation, projectInfo.cluster)
+			if p, err := google.CreateTokenManagerPlugin(config.TrustDomain, projectInfo.number, gkeClusterURL, true); err == nil {
 				tm.plugin = p
 			}
 		}
